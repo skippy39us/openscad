@@ -65,6 +65,12 @@ module left_base_plate() {
             cylinder(r=screw_radius, h=base_thickness + 2);
         translate([pivot_x - 15, pivot_y, base_thickness - countersink_depth])
             cylinder(r1=screw_radius, r2=countersink_radius, h=countersink_depth + 1);
+        
+        // Placed safely on the plate surface (X: -85, Y: -40) cutting 2mm deep
+        translate([-65, -40, base_thickness - 2]) 
+            linear_extrude(height = 4) 
+                text("Left", size = 8, font = "Liberation Sans", halign = "left", valign = "baseline");
+        
     }
 }
 
@@ -106,6 +112,10 @@ module right_base_plate() {
             cylinder(r=screw_radius, h=base_thickness + 2);
         translate([pivot_x + 30, pivot_y, base_thickness - countersink_depth])
             cylinder(r1=screw_radius, r2=countersink_radius, h=countersink_depth + 1);
+        translate([45, -40, base_thickness - 2])
+            linear_extrude(height = 4) 
+                text("Right", size = 8, font = "Liberation Sans", halign = "left", valign = "baseline");
+        
     }
 }
 
@@ -148,6 +158,11 @@ module left_rotating_arm() {
             cylinder(r=screw_radius, h=base_thickness + 2);
         translate([38, pivot_y, base_thickness - countersink_depth])
             cylinder(r1=screw_radius, r2=countersink_radius, h=countersink_depth + 1);
+        // --- BOTTOM ENGRAVED TEXT ("Left") ---
+        translate([30, pivot_y - 30, -0.1])
+            linear_extrude(height = 2)
+                mirror([1, 0, 0])
+                    text("Left", size = 8, font = "Liberation Sans", halign = "center", valign = "center");
     }
 }
 
@@ -190,6 +205,11 @@ module right_rotating_arm() {
             cylinder(r=screw_radius, h=base_thickness + 2);
         translate([-38, pivot_y, base_thickness - countersink_depth])
             cylinder(r1=screw_radius, r2=countersink_radius, h=countersink_depth + 1);
+        // --- BOTTOM ENGRAVED TEXT ("Right") ---
+        translate([-30, pivot_y - 30, -0.1])
+            linear_extrude(height = 2)
+                mirror([1, 0, 0])
+                    text("Right", size = 8, font = "Liberation Sans", halign = "center", valign = "center"); 
     }
 }
 
