@@ -1,4 +1,5 @@
-// Fully Parametric Miter Indexing Triangle for RAS Fence with Conditional Dual D-Holes & Labels
+// Fully Parametric Miter Indexing Triangle for RAS Fence with Ladder Ribs & Truss Bracing
+// Matching heavy-duty rib conventions from fence_spacer.scad
 // Optimized for Flashforge Adventurer 5M (Max bed size 220x220mm)
 
 $fn = 128; 
@@ -7,186 +8,201 @@ inch = 25.4;
 // ==========================================
 // --- USER CONFIGURABLE ANGLE ---
 // ==========================================
-input_angle = 22.5; // Try any angle (e.g., 11.5, 22.5, 30, 45, 60, etc.)
+input_angle = 22.5; // Try any angle (e.g., 11.5, 15, 22.5, 30, 45, 60, etc.)
 
 // --- BED-FIT & GEOMETRY LOGIC ---
 is_flipped = (input_angle > 45.0);
 effective_angle = is_flipped ? (90.0 - input_angle) : input_angle;
 
-base_length = 200.0;                          // Max leg along the fence (X-axis)
-leg_height  = base_length * tan(effective_angle); // Height along Y-axis
+base_length = 200.0;                              // Max leg along the fence (X-axis)
+leg_height  = base_length * tan(effective_angle); // Height along blade line (Y-axis)
 
 // --- EXACT LABEL MAPPING ---
 angle_x = is_flipped ? (90.0 - input_angle) : input_angle; 
 angle_y = is_flipped ? input_angle : (90.0 - input_angle);
 
-// Parameters
-thickness = 3/4 * inch; // 19.05mm (3/4 inch thick)
+// --- PARAMETRIC DIMENSIONS (matching fence_spacer.scad) ---
+thickness       = 3/4 * inch; // 19.05mm (3/4 inch thick)
+border          = 3/8 * inch; // ~9.525mm perimeter wall
+rib_thickness   = 1/4 * inch; // ~6.35mm dividing ribs
+pocket_corner_r = 3.0;        // 3.0mm fillet on pocket corners for strength & printability
 
-// --- PROPORTIONAL D-HOLE SIZING ---
-hole_radius = min(20.0, max(10.0, leg_height * 0.38)); 
-flat_offset = 7.0;
+// Hypotenuse inner offset (perpendicular distance = border)
+hyp_offset_y = border / cos(effective_angle);
+function y_top(x) = leg_height * (1.0 - x / base_length) - hyp_offset_y;
 
-// --- AUTOMATIC SAFETY GUARDS FOR CONDITIONAL HOLE 2 ---
-include_hole1 = true;
-include_hole2 = (leg_height > 65.0) && (effective_angle > 18.0);
+// --- PARAMETRIC BAY CALCULATIONS ---
+min_bay_h    = 18.0; // Minimum vertical opening needed for clamp pad insertion
+corner_block = 22.0; // Solid gusset at 90° corner for indexing stability and label placement
+x_min        = corner_block;
 
-// Hole 1: X-axis fence orientation
-hole1_x = include_hole2 ? 75.0 : 48.0;
-hole1_y = min(20.5, leg_height * 0.32);
+req_y = min_bay_h + hyp_offset_y + border;
+x_max = (req_y >= leg_height) ? x_min : base_length * (1.0 - req_y / leg_height);
+span  = max(0, x_max - x_min);
 
-// Hole 2: Perpendicular Y-axis fence orientation
-hole2_x = 32.0;
-hole2_y = min(42.0, leg_height * 0.55);
-
-// --- CRISP, LEGIBLE FONT SIZING FOR CORNERS ---
-font_size = max(4.5, min(6.5, effective_angle * 0.45));
-
-// --- SAFE FENCE BRIDGE POSITIONING & FONT SCALING (HOLE 1) ---
-d_hole_bottom_y = hole1_y - (hole_radius - flat_offset);
-fence_font_size = min(3.5, max(1.8, d_hole_bottom_y * 0.55));
-fence_label_y = max(fence_font_size * 0.75, d_hole_bottom_y / 2.0);
-
-// --- PERPENDICULAR BRIDGE POSITIONING & FONT SCALING (HOLE 2) ---
-d_hole_left_x = hole2_x - (hole_radius - flat_offset);
-fence_font_size_2 = 2.2; 
-fence_label_x_2 = max(fence_font_size_2 * 0.75, d_hole_left_x / 2.0);
-
-// ==========================================
-// --- REFERENCE POSITIONS FOR TEXT ---
-// ==========================================
-ref_90 = [12.0, 12.0];
-ref_x_tip = [min(base_length * 0.82, max(110.0, base_length * 0.55)), 12.0];
-ref_y_tip = [12.0, min(leg_height * 0.85, max(40.0, leg_height * 0.65))];
+target_bay_w = 38.0; // ~1.5 inches target pocket width matching clamp pads
+num_bays     = (span < 15.0) ? 0 : max(1, round((span + rib_thickness) / (target_bay_w + rib_thickness)));
+bay_w        = (num_bays == 0) ? 0 : (span - (num_bays - 1) * rib_thickness) / num_bays;
 
 // Engraving depths and cut extrusion height
 engrave_depth = 0.6;
-cut_height = 1.5;
+cut_height    = 1.2;
+
+// --- FONT SIZING & POSITIONS ---
+font_size_90 = max(5.0, min(7.5, effective_angle * 0.35));
+ref_90       = [11.0, 11.0];
+
+fence_font_size = min(3.8, max(2.6, border * 0.38));
+fence_x_pos     = (num_bays > 0) ? (x_min + bay_w / 2.0) : 35.0;
+
+tip_x           = min(base_length - 25.0, max(x_max + 14.0, (x_max + base_length) / 2.0));
+h_at_tip_x      = leg_height * (1.0 - tip_x / base_length);
+tip_y           = min(10.0, h_at_tip_x / 2.0);
+font_size_tip_x = min(6.0, max(4.0, h_at_tip_x * 0.28));
+
+tip_y_val                = min(leg_height - 12.0, max(28.0, leg_height * 0.75));
+has_vertical_fence_label = (leg_height > 60.0);
+
+// --- 2D POCKET MODULE ---
+module pocket_polygon(pts) {
+    offset(r = pocket_corner_r)
+        offset(delta = -pocket_corner_r)
+            polygon(pts);
+}
+
+// Extrude each pocket individually in 3D (matching fence_spacer.scad)
+// to ensure clean depth-peeling and solid walls in both F5 Preview and F6 Render
+module all_pockets_3d() {
+    if (num_bays > 0) {
+        for (i = [0 : num_bays - 1]) {
+            bx0 = x_min + i * (bay_w + rib_thickness);
+            bx1 = bx0 + bay_w;
+            x_mid = (bx0 + bx1) / 2;
+            
+            yt0 = y_top(bx0);
+            yt1 = y_top(bx1);
+            yt_mid = y_top(x_mid);
+            bay_h = yt_mid - border;
+            
+            // Subdivide bays taller than 65mm with horizontal cross-ribs (truss)
+            num_divs = max(1, round(bay_h / 65.0));
+            div_h = (bay_h - (num_divs - 1) * rib_thickness) / num_divs;
+            
+            for (d = [0 : num_divs - 1]) {
+                py0 = border + d * (div_h + rib_thickness);
+                translate([0, 0, -1])
+                    linear_extrude(height = thickness + 2, convexity = 10) {
+                        if (d == num_divs - 1) {
+                            // Top pocket bounded by hypotenuse
+                            pocket_polygon([
+                                [bx0, py0],
+                                [bx1, py0],
+                                [bx1, yt1],
+                                [bx0, yt0]
+                            ]);
+                        } else {
+                            // Lower rectangular pocket
+                            py1 = py0 + div_h;
+                            pocket_polygon([
+                                [bx0, py0],
+                                [bx1, py0],
+                                [bx1, py1],
+                                [bx0, py1]
+                            ]);
+                        }
+                    }
+            }
+        }
+    }
+}
 
 module miter_triangle() {
     difference() {
-        union() {
-            // Main right triangle block with dynamic bed-safe dimensions
-            linear_extrude(height = thickness)
-                polygon(points=[
-                    [0, 0],               // Origin (Inner 90-degree corner against fence)
-                    [base_length, 0],     // Along the fence (X-axis)
-                    [0, leg_height]       // Along the saw path/blade line (Y-axis)
-                ]);
-        }
-        
+        // Main right triangle block
+        linear_extrude(height = thickness, convexity = 10)
+            polygon(points=[
+                [0, 0],               // Origin (Inner 90-degree corner against fence)
+                [base_length, 0],     // Along the fence (X-axis)
+                [0, leg_height]       // Along the blade line (Y-axis)
+            ]);
+            
         // ==========================================
-        // --- CLAMPING HOLES ---
+        // --- THROUGH-POCKET CUTOUTS ---
         // ==========================================
-        
-        // 1. D-Hole 1 (X-axis fence)
-        if (include_hole1) {
-            translate([hole1_x, hole1_y, -1]) {
-                difference() {
-                    cylinder(r = hole_radius, h = thickness + 2);
-                    translate([-hole_radius - 5, -hole_radius - 20, -1])
-                        cube([hole_radius * 2 + 10, 20 + (hole_radius - flat_offset), thickness + 4]);
-                    translate([-hole_radius - 5, hole_radius * 0.3, -1])
-                        cube([hole_radius * 2 + 10, hole_radius * 2, thickness + 4]);
-                }
-            }
-        }
-        
-        // 2. D-Hole 2 (Y-axis fence - Conditional)
-        if (include_hole2) {
-            translate([hole2_x, hole2_y, -1]) {
-                rotate([0, 0, 90]) { 
-                    difference() {
-                        cylinder(r = hole_radius, h = thickness + 2);
-                        translate([-hole_radius - 5, -hole_radius - 20, -1])
-                            cube([hole_radius * 2 + 10, 20 + (hole_radius - flat_offset), thickness + 4]);
-                        translate([-hole_radius - 5, hole_radius * 0.3, -1])
-                            cube([hole_radius * 2 + 10, hole_radius * 2, thickness + 4]);
-                    }
-                }
-            }
-        }
-        
+        all_pockets_3d();
+                
         // ==========================================
-        // --- TOP SURFACE ENGRAVINGS (Z = thickness - 0.6) ---
+        // --- TOP SURFACE ENGRAVINGS (Z = thickness - engrave_depth) ---
         // ==========================================
         
-        // 1. "FENCE" label for Hole 1 (top)
-        if (include_hole1) {
-            translate([hole1_x, fence_label_y, thickness - engrave_depth])
-                linear_extrude(height = cut_height)
-                    text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-        }
-        
-        // 2. Perpendicular "FENCE" label for Hole 2 (top - rotated 270 degrees to face the opposite way)
-        if (include_hole2) {
-            translate([fence_label_x_2, hole2_y, thickness - engrave_depth])
+        // 1. "90" corner
+        translate([ref_90[0], ref_90[1], thickness - engrave_depth])
+            linear_extrude(height = cut_height)
+                text("90", size = font_size_90, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                
+        // 2. Primary "FENCE" label along X-axis border
+        translate([fence_x_pos, border / 2.0, thickness - engrave_depth])
+            linear_extrude(height = cut_height)
+                text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                
+        // 3. Perpendicular "FENCE" label along Y-axis border (if height allows)
+        if (has_vertical_fence_label) {
+            translate([border / 2.0, min(42.0, leg_height * 0.45), thickness - engrave_depth])
                 rotate([0, 0, 270])
                     linear_extrude(height = cut_height)
-                        text("FENCE", size = fence_font_size_2, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                        text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
         }
+        
+        // 4. X-axis Tip Label
+        translate([tip_x, tip_y, thickness - engrave_depth])
+            linear_extrude(height = cut_height)
+                text(str(angle_x), size = font_size_tip_x, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
                 
-        // 3. "90" (top)
-        translate(ref_90)
-            translate([0, 0, thickness - engrave_depth])
+        // 5. Y-axis Tip Label
+        translate([border / 2.0, tip_y_val, thickness - engrave_depth])
+            rotate([0, 0, 270])
                 linear_extrude(height = cut_height)
-                    text("90", size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-                
-        // 4. X-axis Tip Label (top)
-        translate(ref_x_tip)
-            translate([0, 0, thickness - engrave_depth])
-                linear_extrude(height = cut_height)
-                    text(str(angle_x), size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-
-        // 5. Y-axis Tip Label (top)
-        translate(ref_y_tip)
-            translate([0, 0, thickness - engrave_depth])
-                linear_extrude(height = cut_height)
-                    text(str(angle_y), size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                    text(str(angle_y), size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
 
         // ==========================================
         // --- BOTTOM SURFACE ENGRAVINGS (Z = -0.1) ---
         // ==========================================
         
-        // 1. "FENCE" label for Hole 1 (bottom)
-        if (include_hole1) {
-            translate([hole1_x, fence_label_y, -0.1])
-                scale([-1, 1, 1])
-                    linear_extrude(height = cut_height)
-                        text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-        }
-        
-        // 2. Perpendicular "FENCE" label for Hole 2 (bottom)
-        if (include_hole2) {
-            translate([fence_label_x_2, hole2_y, -0.1])
+        // 1. "90" corner (bottom)
+        translate([ref_90[0], ref_90[1], -0.1])
+            scale([-1, 1, 1])
+                linear_extrude(height = cut_height)
+                    text("90", size = font_size_90, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                    
+        // 2. Primary "FENCE" label along X-axis border (bottom)
+        translate([fence_x_pos, border / 2.0, -0.1])
+            scale([-1, 1, 1])
+                linear_extrude(height = cut_height)
+                    text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                    
+        // 3. Perpendicular "FENCE" label along Y-axis border (bottom)
+        if (has_vertical_fence_label) {
+            translate([border / 2.0, min(42.0, leg_height * 0.45), -0.1])
                 rotate([0, 0, 270])
                     scale([-1, 1, 1])
                         linear_extrude(height = cut_height)
-                            text("FENCE", size = fence_font_size_2, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                            text("FENCE", size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
         }
-                
-        // 3. "90" (bottom)
-        translate(ref_90)
-            translate([0, 0, -0.1])
-                scale([-1, 1, 1])
-                    linear_extrude(height = cut_height)
-                        text("90", size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-                
+        
         // 4. X-axis Tip Label (bottom)
-        translate(ref_x_tip)
-            translate([0, 0, -0.1])
-                scale([-1, 1, 1])
-                    linear_extrude(height = cut_height)
-                        text(str(angle_x), size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
-
+        translate([tip_x, tip_y, -0.1])
+            scale([-1, 1, 1])
+                linear_extrude(height = cut_height)
+                    text(str(angle_x), size = font_size_tip_x, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                    
         // 5. Y-axis Tip Label (bottom)
-        translate(ref_y_tip)
-            translate([0, 0, -0.1])
+        translate([border / 2.0, tip_y_val, -0.1])
+            rotate([0, 0, 270])
                 scale([-1, 1, 1])
                     linear_extrude(height = cut_height)
-                        text(str(angle_y), size = font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+                        text(str(angle_y), size = fence_font_size, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
     }
 }
 
-// Render on the build plate
+// Render on build plate
 miter_triangle();
